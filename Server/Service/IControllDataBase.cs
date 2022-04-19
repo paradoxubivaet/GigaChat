@@ -10,5 +10,7 @@ namespace Server
     {
         public void Add(User user);
         public void Delete(User user);
+        public bool CheckingUser(string login, string password);
+        public User GetUser(string login, string password);
     }
 }

@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace Server
 {
-    internal class User
+    public class User
     {
         public string UserId { get; set; }
         public IAccessLevel AccessLevel { get; set;}
@@ -16,5 +16,12 @@ namespace Server
 
         // Banned, normal, muted.
         public string Status { get; set; }
+
+        public User(string name, string password, string status)
+        {
+            Name = name;
+            Password = password;
+            Status = status;
+        }
     }
 }

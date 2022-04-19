@@ -1,36 +1,36 @@
-﻿using System;
+﻿using Server.Service;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace Server
 {
 
-    internal class Server
+    public class Server
     {
         private string ip;
         private string port;
 
         private TcpListener tcpListener;
-
+        private UdpClient udpClient;
         private IPEndPoint localEndPoint;
 
         private bool listeningFlag;
+        private int temporaryId;
 
-        // id tcp clients and tcp clients
-        private Dictionary<int, TcpClient> tcpClients;
-
-        // id tcp clients and network stream
-        private Dictionary<int, NetworkStream> clientSteams;
-
-        // id tcp clients and udp client
-        private Dictionary<int, UdpClient> udpClients;
-
-        // messages queue 
-        private List<byte[]> messageQueue;
+        // temporary information
+        private List<SessionInformation> temporarySessionInformation;
+        
+        // commands list
         private List<string> commandList = new List<string> { "/kick", "/ban", "/mute", "/unban", "/givenickname" };
+
+        // services
+        private IControllDataBase controllDataBase;
+
         public Server(string ip, string port)
         {
             Ip= ip; 
@@ -39,12 +39,11 @@ namespace Server
             localEndPoint = new IPEndPoint(IPAddress.Parse(ip), Int32.Parse(port));
 
             listeningFlag = false;
+            temporaryId = 0;
 
-            tcpClients = new Dictionary<int, TcpClient>();
-            clientSteams = new Dictionary<int, NetworkStream>();
-            udpClients = new Dictionary<int, UdpClient>();
-            messageQueue = new List<byte[]>();
+            temporarySessionInformation = new List<SessionInformation>();
 
+            controllDataBase = new ControllDataBase();
         }
 
         public string Ip
@@ -80,7 +79,6 @@ namespace Server
         {
             tcpListener.Start();
 
-            var id = 0;
             listeningFlag = true;
             while (listeningFlag)
             {
@@ -89,13 +87,17 @@ namespace Server
                 if(tcpClient != null) 
                 {
                     var networkStream = tcpClient.GetStream();
-                    var udpClient = await Task.Run(() => GetUdpClient(id));
+                    var sessionInf = new SessionInformation();
+                    udpClient = new UdpClient(8000);
 
-                    tcpClients.Add(id, tcpClient);
-                    clientSteams.Add(id, networkStream);
-                    udpClients.Add(id, udpClient);
+                    sessionInf.Id = temporaryId;
+                    sessionInf.TcpClient = tcpClient;
+                    sessionInf.NetworkStream = networkStream;
+                    sessionInf.MessageStorage = new List<byte[]>();
 
-                    id++;
+                    temporarySessionInformation.Add(sessionInf);
+
+                    temporaryId++;
                 }
             }
         }
@@ -105,98 +107,110 @@ namespace Server
             listeningFlag = false;
             tcpListener.Stop();
         }
-
-        public UdpClient GetUdpClient(int id)
+        
+        public void GetUdpClients()
         {
-            var remoteEndPoint = (IPEndPoint)tcpClients[id].Client.RemoteEndPoint;
-
-            var clientIp = remoteEndPoint.Address.ToString();
-            var udpBytePort = TcpReceive(id);
-            int udpPort = BitConverter.ToInt32(udpBytePort);
-
-            UdpClient udpClient = new UdpClient(clientIp, udpPort);
-            return udpClient;
-        }
-
-        public byte[] TcpReceive(int id)
-        {
-            byte[] receivedData = new byte[128];
-            clientSteams[id].Read(receivedData);
-
-            return receivedData;
-        }
-
-        public void UdpSend(byte[] message)
-        {
-            foreach(var client in udpClients)
+            for(int i=0; i< temporarySessionInformation.Count; i++)
             {
-                client.Value.Send(message, message.Length);
+                IPAddress ip = ((IPEndPoint)(temporarySessionInformation[i].TcpClient.Client.RemoteEndPoint)).Address;
+
+                IPEndPoint remoteIPEndPoint = new IPEndPoint(ip ,8000);
+                UdpClient udpClient = new UdpClient(remoteIPEndPoint);
+
+                temporarySessionInformation[i].UdpClient = udpClient; 
             }
         }
-
-        // Receive UDP ->
 
         public void UdpReceive()
         {
-            for (int i = 0; i < tcpClients.Count; i++)
+            for(int i=0; i < temporarySessionInformation.Count; i++)
             {
-                UdpState udpState = new UdpState();
-                udpState.Client = udpClients[i];
-                udpState.IP = (IPEndPoint)udpClients[i].Client.RemoteEndPoint;
-                udpClients[i].BeginReceive(new AsyncCallback(ReceiveCallback), udpState);
+                IPEndPoint ip = (IPEndPoint)temporarySessionInformation[i].TcpClient.Client.RemoteEndPoint;
+                IPEndPoint iPEndPoint = new IPEndPoint(ip.Address, 8000);
+
+                UdpClient udpClient = new UdpClient(iPEndPoint);
+
+                UdpState us = new UdpState();
+                us.udpClient = udpClient;
+                us.ip = iPEndPoint;
+                us.id = temporarySessionInformation[i].Id;
+
+                udpClient.BeginReceive(new AsyncCallback(ReceviceCallback), us);
             }
         }
-
-        public void ReceiveCallback(IAsyncResult ar)
+        
+        private void ReceviceCallback(IAsyncResult ar)
         {
-            UdpClient client = ((UdpState)(ar.AsyncState)).Client;
-            IPEndPoint ipEndPoint = ((UdpState)(ar.AsyncState)).IP;
-            byte[] message = client.EndReceive(ar,ref ipEndPoint);
+            UdpClient udpClient = ((UdpState)(ar.AsyncState)).udpClient;
+            IPEndPoint iPEndPoint = ((UdpState)(ar.AsyncState)).ip;
+            int id = ((UdpState)(ar.AsyncState)).id;
 
-            messageQueue.Add(message);
+            byte[] data = udpClient.EndReceive(ar, ref iPEndPoint);
+
+            temporarySessionInformation.Single(x => x.Id == id).MessageStorage.Add(data);
         }
 
-        public struct UdpState
+        public void DetermineMessageType()
         {
-            public UdpClient Client;
-            public IPEndPoint IP;
-        }
-
-        // Receive UDP <-
-
-        public void DetermineTypeMessage()
-        {
-            if(messageQueue.Count != 0)
+            for (int j = 0; j < temporarySessionInformation.Count; j++) 
             {
-                for (int i = 0; i < messageQueue.Count; i++)
+                for (int i = 0; i < temporarySessionInformation[j].MessageStorage.Count; i++)
                 {
-                    var message = BitConverter.ToString(messageQueue[i]);
+                    byte[] data = temporarySessionInformation[j].MessageStorage[i];
+
+                    var message = Encoding.UTF8.GetString(data);
 
                     if (commandList.Any(s => message.Contains(s)))
-                    {
-
-                    }
+                        DetermineCommand(message, temporarySessionInformation[i].Id);
                     else
-                    {
-
-                    }
+                        SendMessageUsers(data);
                 }
             }
         }
 
-        public void DetermineNickname()
+        public void DetermineCommand(string message, int id)
+        {
+            if (message.Contains("/register"))
+            {
+                RegisterNewUser(message, id);
+            }
+            else if (message.Contains("/login"))
+            {
+                LoginUser(message);
+            }
+            
+        }
+
+        public void SendMessageUsers(byte[] data)
+        {
+            for(int i = 0; i< temporarySessionInformation.Count; i++)
+            {
+                temporarySessionInformation[i]
+            }
+        }
+
+        public void RegisterNewUser(string message, int id)
+        {
+            string[] loginPassword = message.Split(' ');
+
+            string login = loginPassword[1];
+            string password = loginPassword[2];
+
+            User user = new User(login, password, "normal");
+
+            controllDataBase.Add();
+        }
+
+        public void LoginUser(string message)
         {
 
         }
+    }
 
-        public void CloseConnection()
-        {
-
-        }
-
-        public void DisplayMessageInConsole(byte[] message, string nickname)
-        {
-            Console.WriteLine($"{DateTime.Now.ToShortTimeString()} |- {nickname} -| {BitConverter.ToString(message)}");
-        }
+    public class UdpState
+    {
+        public UdpClient udpClient;
+        public IPEndPoint ip;
+        public int id;
     }
 }

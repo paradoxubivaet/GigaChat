@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace Server.AccessLevel
 {
-    internal class UserAccess : IAccessLevel
+    public class UserAccess : IAccessLevel
     {
         public void Login(string nickname, string password)
         {
