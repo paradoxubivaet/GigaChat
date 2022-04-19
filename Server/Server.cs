@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 
 namespace Server
 {
-
     public class Server
     {
         private string ip;
@@ -75,6 +74,9 @@ namespace Server
             tcpListener = new TcpListener(localEndPoint);
         }
 
+
+        // Этот метод должен выполняться до момента, пока не будет исполнен StopListen().
+        // Метод должен выполняться асинхронно(или в другом потоке)
         public async Task StartListenAsync()
         {
             tcpListener.Start();
@@ -108,6 +110,7 @@ namespace Server
             tcpListener.Stop();
         }
         
+        // Этот метод должен выполняться асинхронно и ... потокобезопасно? 
         public void GetUdpClients()
         {
             for(int i=0; i< temporarySessionInformation.Count; i++)
@@ -121,6 +124,7 @@ namespace Server
             }
         }
 
+        // Этот метод должен выполняться асинхронно
         public void UdpReceive()
         {
             for(int i=0; i < temporarySessionInformation.Count; i++)
@@ -150,6 +154,7 @@ namespace Server
             temporarySessionInformation.Single(x => x.Id == id).MessageStorage.Add(data);
         }
 
+        // Этот метод должен выполняться сразу после появление сообщения в хранилище сообщений 
         public void DetermineMessageType()
         {
             for (int j = 0; j < temporarySessionInformation.Count; j++) 
@@ -168,6 +173,7 @@ namespace Server
             }
         }
 
+        // Этот метод определяет тип команды и должен выполняться ... асинхронно? 
         public void DetermineCommand(string message, int id)
         {
             if (message.Contains("/register"))
@@ -176,19 +182,21 @@ namespace Server
             }
             else if (message.Contains("/login"))
             {
-                LoginUser(message);
+                LoginUser(message, id);
             }
             
         }
 
+        // Этот метод должен выполняться асихнронно 
         public void SendMessageUsers(byte[] data)
         {
             for(int i = 0; i< temporarySessionInformation.Count; i++)
             {
-                temporarySessionInformation[i]
+                temporarySessionInformation[i].UdpClient.Send(data, data.Length);
             }
         }
 
+        // И этот метод должен выполняться асинхронно 
         public void RegisterNewUser(string message, int id)
         {
             string[] loginPassword = message.Split(' ');
@@ -196,16 +204,28 @@ namespace Server
             string login = loginPassword[1];
             string password = loginPassword[2];
 
-            User user = new User(login, password, "normal");
+            if (!controllDataBase.CheckingUser(login, password))
+            {
+                // Изменить статус с normal на limited
+                // При регистрации новому User присваивается статус limited, позволяющий пользоваться только командами /register, /login.
+                // После удачной команды /login пользователю присвается статус normal, при котором он может отправлять сообщения.
+                User user = new User(login, password, "normal");
 
-            controllDataBase.Add();
+                temporarySessionInformation[id].User = user;
+                controllDataBase.Add(user);
+            }
+            else
+                return;
         }
 
-        public void LoginUser(string message)
+        // И этот метод должен выполняться асинхронно
+        public void LoginUser(string message, int id)
         {
-
+            // Уровень доступа меняется. Объекту User присваивается другой статус normal
         }
     }
+
+    
 
     public class UdpState
     {
