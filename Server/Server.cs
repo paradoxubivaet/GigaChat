@@ -30,6 +30,8 @@ namespace Server
         // services
         private IControllDataBase controllDataBase;
 
+        private List<byte[]> temporaryStorage;
+
         public Server(string ip, string port)
         {
             Ip= ip; 
@@ -40,9 +42,11 @@ namespace Server
             listeningFlag = false;
             temporaryId = 0;
 
+            udpClient = new UdpClient(8000);
             temporarySessionInformation = new List<SessionInformation>();
 
             controllDataBase = new ControllDataBase();
+            temporaryStorage = new List<byte[]>();
         }
 
         public string Ip
@@ -74,34 +78,42 @@ namespace Server
             tcpListener = new TcpListener(localEndPoint);
         }
 
-
         // Этот метод должен выполняться до момента, пока не будет исполнен StopListen().
         // Метод должен выполняться асинхронно(или в другом потоке)
-        public async Task StartListenAsync()
+
+        public void StartServer()
         {
             tcpListener.Start();
+        }
 
-            listeningFlag = true;
-            while (listeningFlag)
+        public async Task StartListenAsync()
+        {
+            await Task.Run(() =>
             {
-                var tcpClient = await tcpListener.AcceptTcpClientAsync();
-
-                if(tcpClient != null) 
+                listeningFlag = true;
+                while (listeningFlag)
                 {
-                    var networkStream = tcpClient.GetStream();
-                    var sessionInf = new SessionInformation();
-                    udpClient = new UdpClient(8000);
-
-                    sessionInf.Id = temporaryId;
-                    sessionInf.TcpClient = tcpClient;
-                    sessionInf.NetworkStream = networkStream;
-                    sessionInf.MessageStorage = new List<byte[]>();
-
-                    temporarySessionInformation.Add(sessionInf);
-
-                    temporaryId++;
+                    var tcpClient = tcpListener.AcceptTcpClient();
                 }
-            }
+            });
+        }
+
+        public void ListenCallback(IAsyncResult ar)
+        {
+            var sessingInfo = new SessionInformation();
+
+            TcpListener tcpListener = (TcpListener)ar.AsyncState;
+
+            TcpClient tcpClient = tcpListener.EndAcceptTcpClient(ar);
+
+            sessingInfo.Id = temporaryId;
+            sessingInfo.TcpClient = tcpClient;
+            sessingInfo.NetworkStream = tcpClient.GetStream();
+            sessingInfo.MessageStorage = new List<byte[]>();
+
+            temporarySessionInformation.Add(sessingInfo);
+
+            temporaryId++;
         }
 
         public void StopListen()
@@ -124,7 +136,24 @@ namespace Server
             }
         }
 
+        // Асинхронный прием сообщений по udp 
+        public async Task UdpReceiveAsync()
+        {
+            await Task.Run(async () => 
+            {
+                while (true)
+                {
+                    var udpReceiveResult = await udpClient.ReceiveAsync();
+                    byte[] data = udpReceiveResult.Buffer;
+                    Console.WriteLine(Encoding.UTF8.GetString(data));
+                    temporaryStorage.Add(data);
+                }
+            });
+        }
+
+        // 2 метода ниже оставлены для понимания дальшейших действий
         // Этот метод должен выполняться асинхронно
+        // 
         public void UdpReceive()
         {
             for(int i=0; i < temporarySessionInformation.Count; i++)

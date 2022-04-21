@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace Server
 {
-    internal interface IAccessLevel
+    public interface IAccessLevel
     {
         public void Send(string message);
         public void Login(string nickname, string password);
