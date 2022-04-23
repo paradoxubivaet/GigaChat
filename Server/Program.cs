@@ -14,8 +14,8 @@ namespace Server
 
             server.StartListenAsync();
             server.UdpReceiveAsync();
-
-
+            server.DetermineMessageType();
+            //server.DisplayMessageAsync();
 
             Console.ReadLine();
         }

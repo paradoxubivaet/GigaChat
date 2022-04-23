@@ -1,6 +1,8 @@
 ﻿using Server.Service;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -23,7 +25,11 @@ namespace Server
 
         // temporary information
         private List<SessionInformation> temporarySessionInformation;
-        
+        private List<SessionInformation> temporaryLoginedUsersInformation;
+        private List<MessagesStorage> temporaryMessagesStorage;
+
+        // ОБРАТИТЬ ВНИМАНИЕ 
+        private ObservableCollection<string> messagesObservable = new ObservableCollection<string>();
         // commands list
         private List<string> commandList = new List<string> { "/kick", "/ban", "/mute", "/unban", "/givenickname" };
 
@@ -47,6 +53,10 @@ namespace Server
 
             controllDataBase = new ControllDataBase();
             temporaryStorage = new List<byte[]>();
+            temporaryMessagesStorage = new List<MessagesStorage>();
+            temporaryLoginedUsersInformation = new List<SessionInformation>();
+
+            messagesObservable.CollectionChanged += DisplayMessageFromObservable_CollectionChanged;
         }
 
         public string Ip
@@ -79,7 +89,7 @@ namespace Server
         }
 
         // Этот метод должен выполняться до момента, пока не будет исполнен StopListen().
-        // Метод должен выполняться асинхронно(или в другом потоке)
+        // Метод должен выполняться асинхронно
 
         public void StartServer()
         {
@@ -88,33 +98,190 @@ namespace Server
 
         public async Task StartListenAsync()
         {
-            await Task.Run(() =>
+            await Task.Run( async () =>
             {
                 listeningFlag = true;
                 while (listeningFlag)
                 {
                     var tcpClient = tcpListener.AcceptTcpClient();
+
+                    await CreateSessionInformationAsync(tcpClient);
                 }
             });
         }
 
-        public void ListenCallback(IAsyncResult ar)
+        public async Task CreateSessionInformationAsync(TcpClient tcpClient)
         {
-            var sessingInfo = new SessionInformation();
+            await Task.Run(() =>
+            {
+                var sessingInfo = new SessionInformation();
 
-            TcpListener tcpListener = (TcpListener)ar.AsyncState;
+                sessingInfo.Id = temporaryId;
+                sessingInfo.TcpClient = tcpClient;
+                sessingInfo.NetworkStream = tcpClient.GetStream();
+                sessingInfo.MessageStorage = new List<byte[]>();
 
-            TcpClient tcpClient = tcpListener.EndAcceptTcpClient(ar);
+                temporarySessionInformation.Add(sessingInfo);
 
-            sessingInfo.Id = temporaryId;
-            sessingInfo.TcpClient = tcpClient;
-            sessingInfo.NetworkStream = tcpClient.GetStream();
-            sessingInfo.MessageStorage = new List<byte[]>();
-
-            temporarySessionInformation.Add(sessingInfo);
-
-            temporaryId++;
+                temporaryId++;
+            });
         }
+
+        public async Task UdpReceiveAsync()
+        {
+            await Task.Run(async () =>
+            {
+                while (true)
+                {
+                    var udpReceiveResult = await udpClient.ReceiveAsync();
+                    byte[] data = udpReceiveResult.Buffer;
+
+                    var checkAuthorize = CheckUserAuthorization(udpReceiveResult);
+
+                    var ip = ((IPEndPoint)(udpReceiveResult.RemoteEndPoint)).Address;
+
+                    MessagesStorage messagesStorage = new MessagesStorage();
+                    messagesStorage.Ip = ip;
+                    messagesStorage.Messages.Add(data);
+
+                    if (checkAuthorize.Authorize)
+                    {
+                        temporarySessionInformation[checkAuthorize.Id].MessageStorage.Add(data);
+                    }
+                    else
+                    {
+                        //temporaryMessagesStorage.Add(messagesStorage);
+                        messagesObservable.Add(Encoding.UTF8.GetString(data));
+
+                        string answer = "Вы не можете отправлять сообщения, пока не авторизируетесь.\r\n" +
+                                        "Авторизация: /login [username] [password]\r\n" +
+                                        "Регистрация: /register [username] [password]";
+
+                        await SendUdp(ip, answer);
+                    }
+                }
+            });
+        }
+
+        public void DisplayMessageFromObservable_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (e.Action == NotifyCollectionChangedAction.Add) 
+            {
+                Console.WriteLine(e.NewItems[0]);
+            }
+        }
+
+        public SessionInformation CheckWhoIs(UdpReceiveResult result)
+        {
+            var ip = ((IPEndPoint)(result.RemoteEndPoint)).Address;
+
+            return temporarySessionInformation.Single(x => ((IPEndPoint)(x.TcpClient.Client.RemoteEndPoint)).Address == ip);
+        }
+
+        public AuthorizeState CheckUserAuthorization(UdpReceiveResult result)
+        {
+            var ip = ((IPEndPoint)(result.RemoteEndPoint)).Address;
+            AuthorizeState state = new AuthorizeState();
+            //state.Address = ip;
+
+            if (temporaryLoginedUsersInformation.Count != 0)
+            {
+                foreach (var userLogined in temporaryLoginedUsersInformation)
+                {
+                    if (userLogined.Address == ip) 
+                    {
+                        state.Id = userLogined.Id;
+                        state.Authorize = true;
+
+                        return state;
+                    }
+                    else 
+                        state.Authorize = false;
+                }
+            }
+            state.Authorize = false;
+
+            return state;
+        }
+
+        
+        public async Task DetermineMessageType()
+        {
+            await Task.Run(async () => 
+            { 
+                for(int i = 0; i < temporaryMessagesStorage.Count; i++)
+                {
+                    for(int j = 0; j < temporaryMessagesStorage[i].Messages.Count; j++)
+                    {
+                        var message = temporaryMessagesStorage[i].Messages[j];
+                        var strMessage = Encoding.UTF8.GetString(message);
+
+                        if (commandList.Any(x => strMessage.Contains(x)))
+                            DetermineCommandType(strMessage);
+                        else
+                        {
+                            string answer = "Вы не можете отправлять сообщения, пока не авторизируетесь.\r\n" +
+                                            "Авторизация: /login [username] [password]\r\n" +
+                                            "Регистрация: /register [username] [password]";
+
+                            await SendUdp(temporaryMessagesStorage[i].Ip, answer);
+                        }
+                    }
+                }
+            });
+        }
+
+        public async Task SendUdp(IPAddress address, string message)
+        {
+            await Task.Run(() =>
+            {
+                byte[] data = Encoding.UTF8.GetBytes(message);
+
+                udpClient.Connect("127.0.0.1", 7000);
+                udpClient.Send(data, data.Length);
+            });
+        }
+
+        public void DetermineCommandType(string message)
+        {
+            if (message.Contains("/login"))
+            {
+
+            }
+            else if(message.Contains("/register"))
+            {
+
+            }
+        }
+
+        // Переписать метод так, чтобы он выводил сообщения в порядке их поступления (первый пришел - первый вывелся и разослался)
+        public async void DisplayMessageAsync()
+        {
+            await Task.Run(() =>
+            {
+                while (true)
+                {
+                    if (temporaryMessagesStorage.Count != 0)
+                    {
+                        for (int i = 0; i < temporaryMessagesStorage.Count; i++)
+                        {
+                                if (temporaryMessagesStorage[i].Messages.Count != 0)
+                            {
+                                for (int j = 0; j < temporaryMessagesStorage[i].Messages.Count; j++)
+                                {
+                                    var message = Encoding.UTF8.GetString(temporaryMessagesStorage[i].Messages[j]);
+                                    Console.WriteLine(message);
+
+                                    temporaryMessagesStorage[i].Messages.RemoveAt(j);
+                                    j--;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
 
         public void StopListen()
         {
@@ -122,136 +289,142 @@ namespace Server
             tcpListener.Stop();
         }
         
+        // Чтобы знать, от кого пришло сообщение по udp, нужно при получении клиента тут же заносить его в базу и присваивать ему ID 
+
         // Этот метод должен выполняться асинхронно и ... потокобезопасно? 
-        public void GetUdpClients()
-        {
-            for(int i=0; i< temporarySessionInformation.Count; i++)
-            {
-                IPAddress ip = ((IPEndPoint)(temporarySessionInformation[i].TcpClient.Client.RemoteEndPoint)).Address;
+        //public void GetUdpClients()
+        //{
+        //    for(int i=0; i< temporarySessionInformation.Count; i++)
+        //    {
+        //        IPAddress ip = ((IPEndPoint)(temporarySessionInformation[i].TcpClient.Client.RemoteEndPoint)).Address;
 
-                IPEndPoint remoteIPEndPoint = new IPEndPoint(ip ,8000);
-                UdpClient udpClient = new UdpClient(remoteIPEndPoint);
+        //        IPEndPoint remoteIPEndPoint = new IPEndPoint(ip ,8000);
+        //        UdpClient udpClient = new UdpClient(remoteIPEndPoint);
 
-                temporarySessionInformation[i].UdpClient = udpClient; 
-            }
-        }
+        //        temporarySessionInformation[i].UdpClient = udpClient; 
+        //    }
+        //}
 
-        // Асинхронный прием сообщений по udp 
-        public async Task UdpReceiveAsync()
-        {
-            await Task.Run(async () => 
-            {
-                while (true)
-                {
-                    var udpReceiveResult = await udpClient.ReceiveAsync();
-                    byte[] data = udpReceiveResult.Buffer;
-                    Console.WriteLine(Encoding.UTF8.GetString(data));
-                    temporaryStorage.Add(data);
-                }
-            });
-        }
+        //public async Task DisplayMessageAsync()
+        //{
+        //    await Task.Run(() =>
+        //    {
+        //        while (true)
+        //        {
+        //            if (temporaryStorage.Count != 0)
+        //            {
+        //                for (int i = 0; i < temporaryStorage.Count; i++)
+        //                {
+        //                    var message = Encoding.UTF8.GetString(temporaryStorage[i]);
+        //                    Console.WriteLine(message);
+        //                    temporaryStorage.RemoveAt(i);
+        //                }
+        //            }
+        //        }
+        //    });
+        //}
 
         // 2 метода ниже оставлены для понимания дальшейших действий
         // Этот метод должен выполняться асинхронно
         // 
-        public void UdpReceive()
-        {
-            for(int i=0; i < temporarySessionInformation.Count; i++)
-            {
-                IPEndPoint ip = (IPEndPoint)temporarySessionInformation[i].TcpClient.Client.RemoteEndPoint;
-                IPEndPoint iPEndPoint = new IPEndPoint(ip.Address, 8000);
+        //public void UdpReceive()
+        //{
+        //    for(int i=0; i < temporarySessionInformation.Count; i++)
+        //    {
+        //        IPEndPoint ip = (IPEndPoint)temporarySessionInformation[i].TcpClient.Client.RemoteEndPoint;
+        //        IPEndPoint iPEndPoint = new IPEndPoint(ip.Address, 8000);
 
-                UdpClient udpClient = new UdpClient(iPEndPoint);
+        //        UdpClient udpClient = new UdpClient(iPEndPoint);
 
-                UdpState us = new UdpState();
-                us.udpClient = udpClient;
-                us.ip = iPEndPoint;
-                us.id = temporarySessionInformation[i].Id;
+        //        UdpState us = new UdpState();
+        //        us.udpClient = udpClient;
+        //        us.ip = iPEndPoint;
+        //        us.id = temporarySessionInformation[i].Id;
 
-                udpClient.BeginReceive(new AsyncCallback(ReceviceCallback), us);
-            }
-        }
+        //        udpClient.BeginReceive(new AsyncCallback(ReceviceCallback), us);
+        //    }
+        //}
         
-        private void ReceviceCallback(IAsyncResult ar)
-        {
-            UdpClient udpClient = ((UdpState)(ar.AsyncState)).udpClient;
-            IPEndPoint iPEndPoint = ((UdpState)(ar.AsyncState)).ip;
-            int id = ((UdpState)(ar.AsyncState)).id;
+        //private void ReceviceCallback(IAsyncResult ar)
+        //{
+        //    UdpClient udpClient = ((UdpState)(ar.AsyncState)).udpClient;
+        //    IPEndPoint iPEndPoint = ((UdpState)(ar.AsyncState)).ip;
+        //    int id = ((UdpState)(ar.AsyncState)).id;
 
-            byte[] data = udpClient.EndReceive(ar, ref iPEndPoint);
+        //    byte[] data = udpClient.EndReceive(ar, ref iPEndPoint);
 
-            temporarySessionInformation.Single(x => x.Id == id).MessageStorage.Add(data);
-        }
+        //    temporarySessionInformation.Single(x => x.Id == id).MessageStorage.Add(data);
+        //}
 
         // Этот метод должен выполняться сразу после появление сообщения в хранилище сообщений 
-        public void DetermineMessageType()
-        {
-            for (int j = 0; j < temporarySessionInformation.Count; j++) 
-            {
-                for (int i = 0; i < temporarySessionInformation[j].MessageStorage.Count; i++)
-                {
-                    byte[] data = temporarySessionInformation[j].MessageStorage[i];
+        //public void DetermineMessageType()
+        //{
+        //    for (int j = 0; j < temporarySessionInformation.Count; j++) 
+        //    {
+        //        for (int i = 0; i < temporarySessionInformation[j].MessageStorage.Count; i++)
+        //        {
+        //            byte[] data = temporarySessionInformation[j].MessageStorage[i];
 
-                    var message = Encoding.UTF8.GetString(data);
+        //            var message = Encoding.UTF8.GetString(data);
 
-                    if (commandList.Any(s => message.Contains(s)))
-                        DetermineCommand(message, temporarySessionInformation[i].Id);
-                    else
-                        SendMessageUsers(data);
-                }
-            }
-        }
+        //            if (commandList.Any(s => message.Contains(s)))
+        //                DetermineCommand(message, temporarySessionInformation[i].Id);
+        //            else
+        //                SendMessageUsers(data);
+        //        }
+        //    }
+        //}
 
         // Этот метод определяет тип команды и должен выполняться ... асинхронно? 
-        public void DetermineCommand(string message, int id)
-        {
-            if (message.Contains("/register"))
-            {
-                RegisterNewUser(message, id);
-            }
-            else if (message.Contains("/login"))
-            {
-                LoginUser(message, id);
-            }
+        //public void DetermineCommand(string message, int id)
+        //{
+        //    if (message.Contains("/register"))
+        //    {
+        //        RegisterNewUser(message, id);
+        //    }
+        //    else if (message.Contains("/login"))
+        //    {
+        //        LoginUser(message, id);
+        //    }
             
-        }
+        //}
 
         // Этот метод должен выполняться асихнронно 
-        public void SendMessageUsers(byte[] data)
-        {
-            for(int i = 0; i< temporarySessionInformation.Count; i++)
-            {
-                temporarySessionInformation[i].UdpClient.Send(data, data.Length);
-            }
-        }
+        //public void SendMessageUsers(byte[] data)
+        //{
+        //    for(int i = 0; i< temporarySessionInformation.Count; i++)
+        //    {
+        //        temporarySessionInformation[i].UdpClient.Send(data, data.Length);
+        //    }
+        //}
 
         // И этот метод должен выполняться асинхронно 
-        public void RegisterNewUser(string message, int id)
-        {
-            string[] loginPassword = message.Split(' ');
+        //public void RegisterNewUser(string message, int id)
+        //{
+        //    string[] loginPassword = message.Split(' ');
 
-            string login = loginPassword[1];
-            string password = loginPassword[2];
+        //    string login = loginPassword[1];
+        //    string password = loginPassword[2];
 
-            if (!controllDataBase.CheckingUser(login, password))
-            {
-                // Изменить статус с normal на limited
-                // При регистрации новому User присваивается статус limited, позволяющий пользоваться только командами /register, /login.
-                // После удачной команды /login пользователю присвается статус normal, при котором он может отправлять сообщения.
-                User user = new User(login, password, "normal");
+        //    if (!controllDataBase.CheckingUser(login, password))
+        //    {
+        //        // Изменить статус с normal на limited
+        //        // При регистрации новому User присваивается статус limited, позволяющий пользоваться только командами /register, /login.
+        //        // После удачной команды /login пользователю присвается статус normal, при котором он может отправлять сообщения.
+        //        User user = new User(login, password, "normal");
 
-                temporarySessionInformation[id].User = user;
-                controllDataBase.Add(user);
-            }
-            else
-                return;
-        }
+        //        temporarySessionInformation[id].User = user;
+        //        controllDataBase.Add(user);
+        //    }
+        //    else
+        //        return;
+        //}
 
         // И этот метод должен выполняться асинхронно
-        public void LoginUser(string message, int id)
-        {
-            // Уровень доступа меняется. Объекту User присваивается другой статус normal
-        }
+        //public void LoginUser(string message, int id)
+        //{
+        //    // Уровень доступа меняется. Объекту User присваивается другой статус normal
+        //}
     }
 
     
@@ -261,5 +434,19 @@ namespace Server
         public UdpClient udpClient;
         public IPEndPoint ip;
         public int id;
+    }
+
+    public struct AuthorizeState
+    {
+        public int Id;
+        public bool Authorize;
+        public IPAddress Address;
+    }
+
+    public struct StatesObj
+    {
+        public IPAddress Address;
+        public int Id;
+        public bool Authorize;
     }
 }

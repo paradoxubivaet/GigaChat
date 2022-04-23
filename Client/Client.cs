@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Linq;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
@@ -17,9 +20,13 @@ namespace Client
         private bool waitingInput;
 
         private List<string> messagesStorage;
+        private List<string> messagesReceivedStorage;
+
+        private ObservableCollection<string> messagesObservable = new ObservableCollection<string>();
+
         public Client(string serverIp, string port)
         {   
-            udpClient = new UdpClient(serverIp, 8000);
+            udpClient = new UdpClient(7000);
             tcpClient = new TcpClient(serverIp, Int32.Parse(port)); 
 
             stream = tcpClient.GetStream();
@@ -27,16 +34,22 @@ namespace Client
             waitingInput = true;
 
             messagesStorage=new List<string>();
+            messagesReceivedStorage=new List<string>();
+
+            messagesObservable.CollectionChanged += messagesObservable_CollectionChanged;
         }
 
         public void WaitingInput()
         {
-            while (waitingInput)
+            Task.Run(() =>
             {
-                string message = Console.ReadLine();
+                while (waitingInput)
+                {
+                    string message = Console.ReadLine();
 
-                messagesStorage.Add(message);
-            }
+                    messagesStorage.Add(message);
+                }
+            });
         }
 
         public async Task SendMessagesFromStorageAsync()
@@ -61,15 +74,25 @@ namespace Client
         // Этот метод должен выполняться асинхронно
         public void SendUdpMessage(byte[] data)
         {
-            udpClient.Send(data, data.Length);
+            IPEndPoint endpoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 8000);
+            udpClient.Send(data, data.Length, endpoint);
         }
 
-        public async Task<byte[]> ReceiveUdpMessage()
+        public async Task ReceiveUdpMessage()
         {
-            var receivedData = await udpClient.ReceiveAsync();
-            byte[] data = receivedData.Buffer;
-
-            return data;
+            await Task.Run(async () =>
+            {
+                while (true)
+                {
+                    var receivedData = await udpClient.ReceiveAsync();
+                    byte[] data = receivedData.Buffer;
+                    if (data.Length != 0)
+                    {
+                        //messagesReceivedStorage.Add(Encoding.UTF8.GetString(data));
+                        messagesObservable.Add(Encoding.UTF8.GetString(data));
+                    }
+                }
+            });
         }
 
         // Этот метод должен выполняться асинхронно
@@ -88,19 +111,39 @@ namespace Client
 
             return data;
         }
+
         public string ConvertToString(byte[] data)
         {
             return Encoding.UTF8.GetString(data);
         }
 
-        public Task DisplayMessage(string message)
+        public void messagesObservable_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
         {
-            Task t = new Task(() =>
+            if(e.Action == NotifyCollectionChangedAction.Add)
             {
-                Console.WriteLine(message);
-            });
+                var s = e.NewItems[0];
+                Console.WriteLine(s);
+            }
+                
+        }
 
-            return t;
+        public async Task DisplayMessage()
+        {
+            await Task.Run(() => 
+            {
+                while (true)
+                {
+                    if (messagesReceivedStorage.Count != 0)
+                    {
+                        for (int i = 0; i < messagesReceivedStorage.Count; i++)
+                        {
+                            Console.WriteLine(messagesReceivedStorage[i]);
+
+                            messagesReceivedStorage.RemoveAt(i);
+                        }
+                    }
+                }
+            });
         }
     }
 }
