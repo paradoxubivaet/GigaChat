@@ -8,8 +8,8 @@ namespace Server
 {
     public class User
     {
-        public string UserId { get; set; }
-        public IAccessLevel AccessLevel { get; set;}
+        public int UserId { get; set; }
+        public string AccessLevel { get; set;}
         public string? Nickname { get; set; }
         public string Name { get; set; }
         public string Password { get; set; }

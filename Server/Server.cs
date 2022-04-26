@@ -30,8 +30,13 @@ namespace Server
 
         // ОБРАТИТЬ ВНИМАНИЕ 
         private ObservableCollection<string> messagesObservable = new ObservableCollection<string>();
+
+        // ОБРАТИТЬ ВНИМАНИЕ 2
+        private List<ObservableMessageStore> observableListMessageStore = new List<ObservableMessageStore>();
+        
         // commands list
-        private List<string> commandList = new List<string> { "/kick", "/ban", "/mute", "/unban", "/givenickname" };
+        private List<string> commandList = new List<string> { "login", "/register", "/kick", "/ban", "/mute", 
+                                                              "/unban", "/givenickname" };
 
         // services
         private IControllDataBase controllDataBase;
@@ -56,7 +61,12 @@ namespace Server
             temporaryMessagesStorage = new List<MessagesStorage>();
             temporaryLoginedUsersInformation = new List<SessionInformation>();
 
-            messagesObservable.CollectionChanged += DisplayMessageFromObservable_CollectionChanged;
+
+            // Обратить внимание
+            // messagesObservable.CollectionChanged += DisplayMessageFromObservable_CollectionChanged;
+            // Обратить внимание 2 
+            
+
         }
 
         public string Ip
@@ -140,9 +150,14 @@ namespace Server
 
                     var ip = ((IPEndPoint)(udpReceiveResult.RemoteEndPoint)).Address;
 
-                    MessagesStorage messagesStorage = new MessagesStorage();
-                    messagesStorage.Ip = ip;
-                    messagesStorage.Messages.Add(data);
+                    //MessagesStorage messagesStorage = new MessagesStorage();
+                    //messagesStorage.Ip = ip;
+                    //messagesStorage.Messages.Add(data);
+
+                    ObservableMessageStore observableMessageStore = new ObservableMessageStore();
+                    observableMessageStore.Ip = ip;
+                    observableMessageStore.Messages.CollectionChanged += DisplayMessageFromObservable_CollectionChanged;
+                    observableMessageStore.Messages.Add(data);
 
                     if (checkAuthorize.Authorize)
                     {
@@ -151,7 +166,9 @@ namespace Server
                     else
                     {
                         //temporaryMessagesStorage.Add(messagesStorage);
-                        messagesObservable.Add(Encoding.UTF8.GetString(data));
+                        //messagesObservable.Add(Encoding.UTF8.GetString(data));
+                        observableListMessageStore.Add(observableMessageStore);
+
 
                         string answer = "Вы не можете отправлять сообщения, пока не авторизируетесь.\r\n" +
                                         "Авторизация: /login [username] [password]\r\n" +
@@ -165,11 +182,23 @@ namespace Server
 
         public void DisplayMessageFromObservable_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
         {
-            if (e.Action == NotifyCollectionChangedAction.Add) 
+            if (e.Action == NotifyCollectionChangedAction.Add)
             {
-                Console.WriteLine(e.NewItems[0]);
+                var s = Encoding.UTF8.GetString((byte[])(e.NewItems[0]));
+                Console.WriteLine(s);
+                
+
+                DetermineMessageTypeObservable((byte[])(e.NewItems[0]));
             }
         }
+
+        //public void DisplayMessageFromObservable_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        //{
+        //    if (e.Action == NotifyCollectionChangedAction.Add) 
+        //    {
+        //        Console.WriteLine(e.NewItems[0]);
+        //    }
+        //}
 
         public SessionInformation CheckWhoIs(UdpReceiveResult result)
         {
@@ -204,31 +233,12 @@ namespace Server
             return state;
         }
 
-        
-        public async Task DetermineMessageType()
+        public void DetermineMessageTypeObservable(byte[] data)
         {
-            await Task.Run(async () => 
-            { 
-                for(int i = 0; i < temporaryMessagesStorage.Count; i++)
-                {
-                    for(int j = 0; j < temporaryMessagesStorage[i].Messages.Count; j++)
-                    {
-                        var message = temporaryMessagesStorage[i].Messages[j];
-                        var strMessage = Encoding.UTF8.GetString(message);
+            var message = Encoding.UTF8.GetString(data);
 
-                        if (commandList.Any(x => strMessage.Contains(x)))
-                            DetermineCommandType(strMessage);
-                        else
-                        {
-                            string answer = "Вы не можете отправлять сообщения, пока не авторизируетесь.\r\n" +
-                                            "Авторизация: /login [username] [password]\r\n" +
-                                            "Регистрация: /register [username] [password]";
-
-                            await SendUdp(temporaryMessagesStorage[i].Ip, answer);
-                        }
-                    }
-                }
-            });
+            if (commandList.Any(x => message.Contains(x)))
+                DetermineCommandType(message);
         }
 
         public async Task SendUdp(IPAddress address, string message)
@@ -244,13 +254,19 @@ namespace Server
 
         public void DetermineCommandType(string message)
         {
+            string[] commandParameters = message.Split(' ');
+
+            User user = new User(commandParameters[1], commandParameters[2], "normal");
+
             if (message.Contains("/login"))
             {
-
+                controllDataBase.CheckingUser(commandParameters[1], commandParameters[2]);
             }
             else if(message.Contains("/register"))
             {
-
+                if(!controllDataBase.CheckingUser(commandParameters[1], commandParameters[2]))
+                    controllDataBase.Add(user);
+                SendUdp();
             }
         }
 

@@ -13,6 +13,7 @@ namespace Server.Service
             using (UsersContext db = new UsersContext())
             {
                 db.Users.Add(user);
+                db.SaveChanges();
             }
         }
 
@@ -20,7 +21,8 @@ namespace Server.Service
         {
             using (UsersContext db = new UsersContext())
             {
-                db.Remove(user);
+                db.Users.Remove(user);
+                db.SaveChanges();
             }
         }
 

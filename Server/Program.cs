@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Server
@@ -14,8 +15,12 @@ namespace Server
 
             server.StartListenAsync();
             server.UdpReceiveAsync();
-            server.DetermineMessageType();
+            //server.DetermineMessageType();
             //server.DisplayMessageAsync();
+            //using (UsersContext db = new UsersContext())
+            //{
+            //    Console.WriteLine(db.Users.Single(x => x.Name == "blackbroke"));
+            //}
 
             Console.ReadLine();
         }
