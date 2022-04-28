@@ -14,7 +14,7 @@ namespace Server
             server.StartServer();
 
             server.StartListenAsync();
-            server.UdpReceiveAsync();
+            server.UdpReceiveAsyncSecond();
             //server.DetermineMessageType();
             //server.DisplayMessageAsync();
             //using (UsersContext db = new UsersContext())
