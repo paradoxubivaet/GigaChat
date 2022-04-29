@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Client
@@ -39,15 +40,17 @@ namespace Client
             messagesObservable.CollectionChanged += messagesObservable_CollectionChanged;
         }
 
-        public void WaitingInput()
+        public async Task WaitingInput()
         {
-            Task.Run(() =>
+            await Task.Run(() =>
             {
                 while (waitingInput)
                 {
                     string message = Console.ReadLine();
 
                     messagesStorage.Add(message);
+
+                    Thread.Sleep(1);
                 }
             });
         }
@@ -88,7 +91,6 @@ namespace Client
                     byte[] data = receivedData.Buffer;
                     if (data.Length != 0)
                     {
-                        //messagesReceivedStorage.Add(Encoding.UTF8.GetString(data));
                         messagesObservable.Add(Encoding.UTF8.GetString(data));
                     }
                 }

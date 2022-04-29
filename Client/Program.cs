@@ -13,7 +13,6 @@ namespace Client
 
             client.ReceiveUdpMessage();
             client.SendMessagesFromStorageAsync();
-            //client.DisplayMessage();
 
             while (true)
             {

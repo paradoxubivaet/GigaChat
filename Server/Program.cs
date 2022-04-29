@@ -15,12 +15,6 @@ namespace Server
 
             server.StartListenAsync();
             server.UdpReceiveAsyncSecond();
-            //server.DetermineMessageType();
-            //server.DisplayMessageAsync();
-            //using (UsersContext db = new UsersContext())
-            //{
-            //    Console.WriteLine(db.Users.Single(x => x.Name == "blackbroke"));
-            //}
 
             Console.ReadLine();
         }

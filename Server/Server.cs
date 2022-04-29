@@ -7,6 +7,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Server
@@ -170,6 +171,8 @@ namespace Server
 
                         await SendUdp(ip, answer);
                     }
+
+                    Thread.Sleep(1);
                 }
             });
         }
@@ -180,9 +183,16 @@ namespace Server
             {
                 var bytes = (byte[])(e.NewItems[0]);
                 var s = Encoding.UTF8.GetString(bytes);
-                Console.WriteLine(s);
-
                 var ip = observableSessionInformationStore.First(x => x.MessageStorage.Any(t => t == bytes)).Address;
+
+                if (observableSessionInformationStore.First(x => x.Address.ToString() == ip.ToString()).User != null)
+                {
+                    var userName = observableSessionInformationStore.First(x => x.Address.ToString() == ip.ToString()).User.Name;
+                    var mess = $"{DateTime.Now.ToShortTimeString()} | {userName} | {s}";
+                    Console.WriteLine(mess);
+                }
+                else
+                    Console.WriteLine(s);
 
                 await DetermineMessageTypeObservableAsync(bytes, ip);
             }
@@ -243,6 +253,10 @@ namespace Server
                 {
                     RegisterNewUser(message, address);
                 }
+                else if (message.Contains("/kick"))
+                {
+                    KickUser(message,address);
+                }
             });
         }
 
@@ -251,6 +265,7 @@ namespace Server
         // /Login
         private void AuthorizationUser(string message, IPAddress address)
         {
+            // /login blakds 23232ds
             Task.Run(async () =>
             {
                 string[] commandParameters = message.Split();
@@ -258,7 +273,6 @@ namespace Server
                 if (commandParameters.Length == 3)
                 {
                     User user = new User(commandParameters[1], commandParameters[2], "normal");
-                    
 
                     if (controllDataBase.CheckingUser(commandParameters[1], commandParameters[2]))
                     {
@@ -280,6 +294,7 @@ namespace Server
 
         private void RegisterNewUser(string message, IPAddress address)
         {
+            // /register blakds 23232ds
             Task.Run(async () =>
             {
                 string[] commandParameters = message.Split(' ');
@@ -301,6 +316,28 @@ namespace Server
         }
 
         private void KickUser(string message, IPAddress address)
+        {   
+            // /kick blackbroke 
+            Task.Run(async () =>
+            {
+                string[] commandParameters = message.Split(' ');
+                var name = commandParameters[1];
+
+                if (commandParameters.Length == 2)
+                {
+                    if (observableSessionInformationStore.Any(x => x.User.Name == name))
+                    {
+                        observableSessionInformationStore.
+                    }
+                    else
+                        await SendUdp(address, "Данного пользователя нет в системе.");
+                }
+                else
+                    await SendUdp(address, "Неверная команда.");
+            });
+        }
+
+        private void Ban()
         {
 
         }

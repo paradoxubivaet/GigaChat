@@ -20,5 +20,10 @@ namespace Server
         public TcpClient TcpClient { get; set; } 
         public NetworkStream NetworkStream { get; set; }
         public ObservableCollection<byte[]> MessageStorage { get; set; }
+
+        public void CloseConnect()
+        {
+            UdpClient.Dispose();
+        }
     }
 }
