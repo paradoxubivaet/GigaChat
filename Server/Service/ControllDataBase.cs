@@ -37,11 +37,37 @@ namespace Server.Service
             }
         }
 
+        public bool CheckingUser(string login)
+        {
+            using (UsersContext db = new UsersContext())
+            {
+                bool result = db.Users.Any(n => n.Name == login);
+                return result;
+            }
+        }
+
         public User GetUser(string login, string password)
         {
             using (UsersContext db = new UsersContext())
             {
                 return db.Users.First(n => n.Name == login && n.Password == password);
+            }
+        }
+
+        public void SetUserStatus(string login, string status)
+        {
+            using (UsersContext db = new UsersContext())
+            {
+                db.Users.First(x => x.Name == login).Status = status;
+                db.SaveChanges();
+            }
+        }
+
+        public string GetUserStatus(string login, string status)
+        {
+            using(UsersContext db = new UsersContext())
+            {
+                return db.Users.First(x => x.Name == login).Status;
             }
         }
     }

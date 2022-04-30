@@ -257,6 +257,14 @@ namespace Server
                 {
                     KickUser(message,address);
                 }
+                else if (message.Contains("/ban"))
+                {
+                    BanUser(message,address);
+                }
+                else if (message.Contains("/unban"))
+                {
+                    UnbanUser(message,address);
+                }
             });
         }
 
@@ -327,7 +335,9 @@ namespace Server
                 {
                     if (observableSessionInformationStore.Any(x => x.User.Name == name))
                     {
-                        observableSessionInformationStore.
+                        var kickedUser = observableSessionInformationStore.First(x => x.User.Name == name);
+                        await SendUdp(kickedUser.Address, "Вы были кикнуты с сервера.");
+                        observableSessionInformationStore.Remove(kickedUser);
                     }
                     else
                         await SendUdp(address, "Данного пользователя нет в системе.");
@@ -337,12 +347,59 @@ namespace Server
             });
         }
 
-        private void Ban()
+        // To do something with two the methods below
+        private void BanUser(string message, IPAddress address)
         {
+            Task.Run(async () =>
+            {
+                string[] commandParameters = message.Split(' ');
+                var name = commandParameters[1];
 
+                if (commandParameters.Length == 2)
+                {
+
+                    //if (observableSessionInformationStore.Any(x => x.User.Name == name))
+                    if(controllDataBase.CheckingUser(name))
+                    {
+                        controllDataBase.SetUserStatus(name, "Banned");
+                        var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' был забанен.");
+                        await SendUdpAllUsers(mess);
+                    }
+                    else
+                        await SendUdp(address, "Данного пользователя нет в системе.");
+                }
+                else
+                    await SendUdp(address, "Неверная команда");
+            });
+        }
+
+        private void UnbanUser(string message, IPAddress address)
+        {
+            Task.Run(async () =>
+            {
+                string[] commandParameters = message.Split(' ');
+                var name = commandParameters[1];
+
+                if (commandParameters.Length == 2)
+                {
+                    if (observableSessionInformationStore.Any(x => x.User.Name == name))
+                    {
+                        controllDataBase.SetUserStatus(name, "Normal");
+                    }
+                    else
+                        await SendUdp(address, "Данного пользователя нет в системе.");
+                }
+                else
+                    await SendUdp(address, "Неверная команда");
+            });
         }
 
         // Chat commands <---
+
+        //private string GetStatus()
+        //{
+
+        //}
 
         public async Task SendUdpAllUsers(byte[] message, IPAddress address)
         {
@@ -354,6 +411,21 @@ namespace Server
 
                 var collection = observableSessionInformationStore.Where(x => x.Status == "Authorized").Where(x => x.Address.ToString() != address.ToString()).Select(x => x.Address);
                 Parallel.ForEach(collection, async address => 
+                {
+                    await SendUdp(address, newMassage);
+                });
+            });
+        }
+
+        public async Task SendUdpAllUsers(byte[] message)
+        {
+            await Task.Run(() =>
+            {
+                var s = Encoding.UTF8.GetString(message);
+                var newMassage = $"{DateTime.Now.ToShortTimeString()} | SERVER | {s}";
+
+                var collection = observableSessionInformationStore.Where(x => x.Status == "Authorized").Select(x => x.Address);
+                Parallel.ForEach(collection, async address =>
                 {
                     await SendUdp(address, newMassage);
                 });
