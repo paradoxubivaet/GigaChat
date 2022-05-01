@@ -253,33 +253,19 @@ namespace Server
             await Task.Run(() =>
             {
                 if (message.Contains("/login"))
-                {
                     AuthorizationUser(message, address);
-                }
                 else if (message.Contains("/register"))
-                {
                     RegisterNewUser(message, address);
-                }
                 else if (message.Contains("/kick"))
-                {
                     KickUser(message,address);
-                }
                 else if (message.Contains("/ban"))
-                {
                     BanUser(message,address);
-                }
                 else if (message.Contains("/unban"))
-                {
                     UnbanUser(message,address);
-                }
                 else if(message.Contains("/mute"))
-                {
                     MuteUser(message,address);
-                }
                 else if (message.Contains("/unmute"))
-                {
                     UnmuteUser(message,address);
-                }
             });
         }
 
@@ -295,7 +281,7 @@ namespace Server
 
                 if (commandParameters.Length == 3)
                 {
-                    User user = new User(commandParameters[1], commandParameters[2], "normal");
+                    User user = new User(commandParameters[1], commandParameters[2], "Normal");
 
                     if (controllDataBase.CheckingUser(commandParameters[1], commandParameters[2]))
                     {
@@ -349,22 +335,27 @@ namespace Server
             // /kick blackbroke 
             Task.Run(async () =>
             {
-                string[] commandParameters = message.Split(' ');
-                var name = commandParameters[1];
-
-                if (commandParameters.Length == 2)
+                if (observableSessionInformationStore.First(x => x.Address.ToString() == address.ToString()).Status == "Authorized")
                 {
-                    if (observableSessionInformationStore.Any(x => x.User.Name == name))
+                    string[] commandParameters = message.Split(' ');
+                    var name = commandParameters[1];
+
+                    if (commandParameters.Length == 2)
                     {
-                        var kickedUser = observableSessionInformationStore.First(x => x.User.Name == name);
-                        await SendUdp(kickedUser.Address, "Вы были кикнуты с сервера.");
-                        observableSessionInformationStore.Remove(kickedUser);
+                        if (observableSessionInformationStore.Any(x => x.User.Name == name))
+                        {
+                            var kickedUser = observableSessionInformationStore.First(x => x.User.Name == name);
+                            await SendUdp(kickedUser.Address, "Вы были кикнуты с сервера.");
+                            observableSessionInformationStore.Remove(kickedUser);
+                        }
+                        else
+                            await SendUdp(address, "Данного пользователя нет в системе.");
                     }
                     else
-                        await SendUdp(address, "Данного пользователя нет в системе.");
+                        await SendUdp(address, "Неверная команда.");
                 }
                 else
-                    await SendUdp(address, "Неверная команда.");
+                    await SendUdp(address, "Вы не авторизованы.");
             });
         }
 
@@ -373,22 +364,27 @@ namespace Server
         {
             Task.Run(async () =>
             {
-                string[] commandParameters = message.Split(' ');
-                var name = commandParameters[1];
-
-                if (commandParameters.Length == 2)
+                if (observableSessionInformationStore.First(x => x.Address.ToString() == address.ToString()).Status == "Authorized")
                 {
-                    if(controllDataBase.CheckingUser(name))
+                    string[] commandParameters = message.Split(' ');
+                    var name = commandParameters[1];
+
+                    if (commandParameters.Length == 2)
                     {
-                        controllDataBase.SetUserStatus(name, "Banned");
-                        var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' был забанен.");
-                        await SendUdpAllUsers(mess);
+                        if(controllDataBase.CheckingUser(name))
+                        {
+                            controllDataBase.SetUserStatus(name, "Banned");
+                            var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' был забанен.");
+                            await SendUdpAllUsers(mess);
+                        }
+                        else
+                            await SendUdp(address, "Данного пользователя нет в системе.");
                     }
                     else
-                        await SendUdp(address, "Данного пользователя нет в системе.");
+                        await SendUdp(address, "Неверная команда");
                 }
                 else
-                    await SendUdp(address, "Неверная команда");
+                    await SendUdp(address, "Вы не авторизованы.");
             });
         }
 
@@ -396,22 +392,28 @@ namespace Server
         {
             Task.Run(async () =>
             {
-                string[] commandParameters = message.Split(' ');
-                var name = commandParameters[1];
-
-                if (commandParameters.Length == 2)
+                if (observableSessionInformationStore.First(x => x.Address.ToString() == address.ToString()).Status == "Authorized")
                 {
-                    if (controllDataBase.CheckingUser(name))
+                    string[] commandParameters = message.Split(' ');
+                    var name = commandParameters[1];
+
+                    if (commandParameters.Length == 2)
                     {
-                        controllDataBase.SetUserStatus(name, "Normal");
-                        var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' был разбанен.");
-                        await SendUdpAllUsers(mess);
+                        if (controllDataBase.CheckingUser(name))
+                        {
+                            controllDataBase.SetUserStatus(name, "Normal");
+                            var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' был разбанен.");
+                            await SendUdpAllUsers(mess);
+                        }
+                        else
+                            await SendUdp(address, "Данного пользователя нет в системе.");
                     }
                     else
-                        await SendUdp(address, "Данного пользователя нет в системе.");
+                        await SendUdp(address, "Неверная команда");
                 }
                 else
-                    await SendUdp(address, "Неверная команда");
+                    await SendUdp(address, "Вы не авторизованы.");
+
             });
         }
 
@@ -419,22 +421,27 @@ namespace Server
         {
             Task.Run(async () =>
             {
-                string[] commandParameters = message.Split(' ');
-                var name = commandParameters[1];
-
-                if (commandParameters.Length == 2)
+                if (observableSessionInformationStore.First(x => x.Address.ToString() == address.ToString()).Status == "Authorized")
                 {
-                    if (controllDataBase.CheckingUser(name))
+                    string[] commandParameters = message.Split(' ');
+                    var name = commandParameters[1];
+
+                    if (commandParameters.Length == 2)
                     {
-                        controllDataBase.SetUserStatus(name, "Muted");
-                        var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' был лишен языка.");
-                        await SendUdpAllUsers(mess);
+                        if (controllDataBase.CheckingUser(name))
+                        {
+                            controllDataBase.SetUserStatus(name, "Muted");
+                            var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' был лишен языка.");
+                            await SendUdpAllUsers(mess);
+                        }
+                        else
+                            await SendUdp(address, "Данного пользователя нет в системе.");
                     }
                     else
-                        await SendUdp(address, "Данного пользователя нет в системе.");
+                        await SendUdp(address, "Неверная команда");
                 }
                 else
-                    await SendUdp(address, "Неверная команда");
+                    await SendUdp(address, "Вы не авторизованы.");
             });
         }
 
@@ -442,22 +449,27 @@ namespace Server
         {
             Task.Run(async () =>
             {
-                string[] commandParameters = message.Split(' ');
-                var name = commandParameters[1];
-
-                if (commandParameters.Length == 2)
+                if (observableSessionInformationStore.First(x => x.Address.ToString() == address.ToString()).Status == "Authorized")
                 {
-                    if (controllDataBase.CheckingUser(name))
+                    string[] commandParameters = message.Split(' ');
+                    var name = commandParameters[1];
+
+                    if (commandParameters.Length == 2)
                     {
-                        controllDataBase.SetUserStatus(name, "Normal");
-                        var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' снова отрастил язык.");
-                        await SendUdpAllUsers(mess);
+                        if (controllDataBase.CheckingUser(name))
+                        {
+                            controllDataBase.SetUserStatus(name, "Normal");
+                            var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' снова отрастил язык.");
+                            await SendUdpAllUsers(mess);
+                        }
+                        else
+                            await SendUdp(address, "Данного пользователя нет в системе.");
                     }
                     else
-                        await SendUdp(address, "Данного пользователя нет в системе.");
+                        await SendUdp(address, "Неверная команда");
                 }
                 else
-                    await SendUdp(address, "Неверная команда");
+                    await SendUdp(address, "Вы не авторизованы.");
             });
         }
 
