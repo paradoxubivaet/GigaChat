@@ -26,7 +26,6 @@ namespace Server
 
         // temporary information
         private List<SessionInformation> temporarySessionInformation;
-        private List<SessionInformation> temporaryLoginedUsersInformation;
 
         // NOTE
         private ObservableCollection<SessionInformation> observableSessionInformationStore = new ObservableCollection<SessionInformation>();
@@ -52,9 +51,6 @@ namespace Server
             temporarySessionInformation = new List<SessionInformation>();
 
             controllDataBase = new ControllDataBase();
-
-            temporaryLoginedUsersInformation = new List<SessionInformation>();
-
         }
 
         public string Ip
@@ -139,7 +135,7 @@ namespace Server
                     var udpReceiveResult = await udpClient.ReceiveAsync();
                     byte[] data = udpReceiveResult.Buffer;
 
-                    var checkAuthorize = CheckUserAuthorization(udpReceiveResult);
+                    //var checkAuthorize = CheckUserAuthorization(udpReceiveResult);
                     var ip = ((IPEndPoint)(udpReceiveResult.RemoteEndPoint)).Address;
 
                     if (observableSessionInformationStore.Any(x => x.Address.ToString() == ip.ToString()))
@@ -203,38 +199,6 @@ namespace Server
 
                 await DetermineMessageTypeObservableAsync(bytes, ip);
             }
-        }
-
-        public SessionInformation CheckWhoIs(UdpReceiveResult result)
-        {
-            var ip = ((IPEndPoint)(result.RemoteEndPoint)).Address;
-
-            return temporarySessionInformation.Single(x => ((IPEndPoint)(x.TcpClient.Client.RemoteEndPoint)).Address == ip);
-        }
-
-        public AuthorizeState CheckUserAuthorization(UdpReceiveResult result)
-        {
-            var ip = ((IPEndPoint)(result.RemoteEndPoint)).Address;
-            AuthorizeState state = new AuthorizeState();
-
-            if (temporaryLoginedUsersInformation.Count != 0)
-            {
-                foreach (var userLogined in temporaryLoginedUsersInformation)
-                {
-                    if (userLogined.Address == ip) 
-                    {
-                        state.Id = userLogined.Id;
-                        state.Authorize = true;
-
-                        return state;
-                    }
-                    else 
-                        state.Authorize = false;
-                }
-            }
-            state.Authorize = false;
-
-            return state;
         }
 
         public async Task DetermineMessageTypeObservableAsync(byte[] data, IPAddress address)
@@ -339,17 +303,23 @@ namespace Server
                 {
                     string[] commandParameters = message.Split(' ');
                     var name = commandParameters[1];
+                    var senderName = observableSessionInformationStore.First(x => x.Address.ToString() == address.ToString()).User.Name;
 
                     if (commandParameters.Length == 2)
                     {
-                        if (observableSessionInformationStore.Any(x => x.User.Name == name))
+                        if (controllDataBase.GetAccessUser(senderName) == "Administrator")
                         {
-                            var kickedUser = observableSessionInformationStore.First(x => x.User.Name == name);
-                            await SendUdp(kickedUser.Address, "Вы были кикнуты с сервера.");
-                            observableSessionInformationStore.Remove(kickedUser);
+                            if (observableSessionInformationStore.Any(x => x.User.Name == name))
+                            {
+                                var kickedUser = observableSessionInformationStore.First(x => x.User.Name == name);
+                                await SendUdp(kickedUser.Address, "Вы были кикнуты с сервера.");
+                                observableSessionInformationStore.Remove(kickedUser);
+                            }
+                            else
+                                await SendUdp(address, "Данного пользователя нет в системе.");
                         }
                         else
-                            await SendUdp(address, "Данного пользователя нет в системе.");
+                            await SendUdp(address, "У вас недостаточно прав для этой команды.");
                     }
                     else
                         await SendUdp(address, "Неверная команда.");
@@ -368,17 +338,27 @@ namespace Server
                 {
                     string[] commandParameters = message.Split(' ');
                     var name = commandParameters[1];
+                    var senderName = observableSessionInformationStore.First(x => x.Address.ToString() == address.ToString()).User.Name;
 
                     if (commandParameters.Length == 2)
                     {
-                        if(controllDataBase.CheckingUser(name))
+                        // Я понял, в чём ошибка. Нужно передать ник отправителя
+                        if (controllDataBase.GetAccessUser(senderName) == "Administrator")
                         {
-                            controllDataBase.SetUserStatus(name, "Banned");
-                            var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' был забанен.");
-                            await SendUdpAllUsers(mess);
+                            if (controllDataBase.CheckingUser(name))
+                            {
+                                controllDataBase.SetUserStatus(name, "Banned");
+                                var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' был забанен.");
+                                await SendUdpAllUsers(mess);
+                            }
+                            else
+                                await SendUdp(address, "Данного пользователя нет в системе.");
                         }
                         else
-                            await SendUdp(address, "Данного пользователя нет в системе.");
+                        {
+                            Console.WriteLine($"{controllDataBase.GetAccessUser(senderName)}");
+                            await SendUdp(address, "У вас недостаточно прав для этой команды.");
+                        }
                     }
                     else
                         await SendUdp(address, "Неверная команда");
@@ -396,17 +376,23 @@ namespace Server
                 {
                     string[] commandParameters = message.Split(' ');
                     var name = commandParameters[1];
+                    var senderName = observableSessionInformationStore.First(x => x.Address.ToString() == address.ToString()).User.Name;
 
                     if (commandParameters.Length == 2)
                     {
-                        if (controllDataBase.CheckingUser(name))
+                        if (controllDataBase.GetAccessUser(senderName) == "Administrator")
                         {
-                            controllDataBase.SetUserStatus(name, "Normal");
-                            var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' был разбанен.");
-                            await SendUdpAllUsers(mess);
+                            if (controllDataBase.CheckingUser(name))
+                            {
+                                controllDataBase.SetUserStatus(name, "Normal");
+                                var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' был разбанен.");
+                                await SendUdpAllUsers(mess);
+                            }
+                            else
+                                await SendUdp(address, "Данного пользователя нет в системе.");
                         }
                         else
-                            await SendUdp(address, "Данного пользователя нет в системе.");
+                            await SendUdp(address, "У вас недостаточно прав для этой команды.");
                     }
                     else
                         await SendUdp(address, "Неверная команда");
@@ -425,17 +411,23 @@ namespace Server
                 {
                     string[] commandParameters = message.Split(' ');
                     var name = commandParameters[1];
+                    var senderName = observableSessionInformationStore.First(x => x.Address.ToString() == address.ToString()).User.Name;
 
                     if (commandParameters.Length == 2)
                     {
-                        if (controllDataBase.CheckingUser(name))
+                        if (controllDataBase.GetAccessUser(senderName) == "Administrator")
                         {
-                            controllDataBase.SetUserStatus(name, "Muted");
-                            var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' был лишен языка.");
-                            await SendUdpAllUsers(mess);
+                            if (controllDataBase.CheckingUser(name))
+                            {
+                                controllDataBase.SetUserStatus(name, "Muted");
+                                var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' был лишен языка.");
+                                await SendUdpAllUsers(mess);
+                            }
+                            else
+                                await SendUdp(address, "Данного пользователя нет в системе.");
                         }
                         else
-                            await SendUdp(address, "Данного пользователя нет в системе.");
+                            await SendUdp(address, "У вас недостаточно прав для этой команды.");
                     }
                     else
                         await SendUdp(address, "Неверная команда");
@@ -453,17 +445,23 @@ namespace Server
                 {
                     string[] commandParameters = message.Split(' ');
                     var name = commandParameters[1];
+                    var senderName = observableSessionInformationStore.First(x => x.Address.ToString() == address.ToString()).User.Name;
 
                     if (commandParameters.Length == 2)
                     {
-                        if (controllDataBase.CheckingUser(name))
+                        if (controllDataBase.GetAccessUser(senderName) == "Administrator")
                         {
-                            controllDataBase.SetUserStatus(name, "Normal");
-                            var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' снова отрастил язык.");
-                            await SendUdpAllUsers(mess);
+                            if (controllDataBase.CheckingUser(name))
+                            {
+                                controllDataBase.SetUserStatus(name, "Normal");
+                                var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' снова отрастил язык.");
+                                await SendUdpAllUsers(mess);
+                            }
+                            else
+                                await SendUdp(address, "Данного пользователя нет в системе.");
                         }
                         else
-                            await SendUdp(address, "Данного пользователя нет в системе.");
+                            await SendUdp(address, "У вас недостаточно прав для этой команды.");
                     }
                     else
                         await SendUdp(address, "Неверная команда");
@@ -533,12 +531,5 @@ namespace Server
         }
         
         // Чтобы знать, от кого пришло сообщение по udp, нужно при получении клиента тут же заносить его в базу и присваивать ему ID 
-    }
-
-    public struct AuthorizeState
-    {
-        public int Id;
-        public bool Authorize;
-        public IPAddress Address;
     }
 }

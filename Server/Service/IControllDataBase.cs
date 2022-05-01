@@ -15,5 +15,6 @@ namespace Server
         public User GetUser(string login, string password);
         public void SetUserStatus(string login, string status);
         public string GetUserStatus(string login);
+        public string GetAccessUser(string login);
     }
 }

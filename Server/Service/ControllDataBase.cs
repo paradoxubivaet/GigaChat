@@ -70,5 +70,13 @@ namespace Server.Service
                 return db.Users.First(x => x.Name == login).Status;
             }
         }
+
+        public string GetAccessUser(string login)
+        {
+            using (UsersContext db = new UsersContext())
+            {
+                return db.Users.First(x => x.Name == login).AccessLevel;
+            }
+        }
     }
 }

@@ -9,6 +9,7 @@ namespace Server
     public class User
     {
         public int UserId { get; set; }
+        // Administrator, Moderator, Normal
         public string AccessLevel { get; set;}
         public string? Nickname { get; set; }
         public string Name { get; set; }
