@@ -63,7 +63,7 @@ namespace Server.Service
             }
         }
 
-        public string GetUserStatus(string login, string status)
+        public string GetUserStatus(string login)
         {
             using(UsersContext db = new UsersContext())
             {

@@ -284,11 +284,17 @@ namespace Server
 
                     if (controllDataBase.CheckingUser(commandParameters[1], commandParameters[2]))
                     {
-                        var session = observableSessionInformationStore.Select(x => x).First(x => x.Address == address);
-                        session.Status = "Authorized";
-                        session.User = user;
+                        var status = controllDataBase.GetUserStatus(commandParameters[1]);
+                        if (status == "Normal")
+                        {
+                            var session = observableSessionInformationStore.Select(x => x).First(x => x.Address == address);
+                            session.Status = "Authorized";
+                            session.User = user;
 
-                        await SendUdp(address, "Вы успешно вошли в систему");
+                            await SendUdp(address, "Вы успешно вошли в систему");
+                        }
+                        else
+                            await SendUdp(address, "Вы были забанены.");
                     }
                     else
                     {
@@ -309,7 +315,7 @@ namespace Server
 
                 if (commandParameters.Length == 3)
                 {
-                    User user = new User(commandParameters[1], commandParameters[2], "normal");
+                    User user = new User(commandParameters[1], commandParameters[2], "Normal");
                     if (!controllDataBase.CheckingUser(commandParameters[1], commandParameters[2]))
                     {
                         controllDataBase.Add(user);
@@ -382,9 +388,11 @@ namespace Server
 
                 if (commandParameters.Length == 2)
                 {
-                    if (observableSessionInformationStore.Any(x => x.User.Name == name))
+                    if (controllDataBase.CheckingUser(name))
                     {
                         controllDataBase.SetUserStatus(name, "Normal");
+                        var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' был разбанен.");
+                        await SendUdpAllUsers(mess);
                     }
                     else
                         await SendUdp(address, "Данного пользователя нет в системе.");
@@ -395,11 +403,6 @@ namespace Server
         }
 
         // Chat commands <---
-
-        //private string GetStatus()
-        //{
-
-        //}
 
         public async Task SendUdpAllUsers(byte[] message, IPAddress address)
         {
