@@ -33,7 +33,7 @@ namespace Server
         
         // commands list
         private List<string> commandList = new List<string> { "login", "/register", "/kick", "/ban", "/mute", 
-                                                              "/unban", "/givenickname" };
+                                                              "/unmute", "/unban", "/givenickname" };
 
         // services
         private IControllDataBase controllDataBase;
@@ -146,8 +146,15 @@ namespace Server
                     {
                         if(observableSessionInformationStore.First(x => x.Address.ToString() == ip.ToString()).Status == "Authorized")
                         {
-                            await SendUdpAllUsers(data, ip);
-                            observableSessionInformationStore.First(x => x.Address.ToString() == ip.ToString()).MessageStorage.Add(data);
+                            var name = observableSessionInformationStore.
+                                        First(x => x.Address.ToString() == Ip.ToString()).User.Name;
+                            if (controllDataBase.GetUserStatus(name) == "Muted")
+                                await SendUdp(ip, "У вас отсутствует язык (Мут)");
+                            else
+                            {
+                                await SendUdpAllUsers(data, ip);
+                                observableSessionInformationStore.First(x => x.Address.ToString() == ip.ToString()).MessageStorage.Add(data);
+                            }
                         }
                         else
                         {
@@ -265,6 +272,14 @@ namespace Server
                 {
                     UnbanUser(message,address);
                 }
+                else if(message.Contains("/mute"))
+                {
+                    MuteUser(message,address);
+                }
+                else if (message.Contains("/unmute"))
+                {
+                    UnmuteUser(message,address);
+                }
             });
         }
 
@@ -285,7 +300,7 @@ namespace Server
                     if (controllDataBase.CheckingUser(commandParameters[1], commandParameters[2]))
                     {
                         var status = controllDataBase.GetUserStatus(commandParameters[1]);
-                        if (status == "Normal")
+                        if (status == "Normal" || status == "Muted")
                         {
                             var session = observableSessionInformationStore.Select(x => x).First(x => x.Address == address);
                             session.Status = "Authorized";
@@ -293,7 +308,7 @@ namespace Server
 
                             await SendUdp(address, "Вы успешно вошли в систему");
                         }
-                        else
+                        else if(status == "Banned")
                             await SendUdp(address, "Вы были забанены.");
                     }
                     else
@@ -363,8 +378,6 @@ namespace Server
 
                 if (commandParameters.Length == 2)
                 {
-
-                    //if (observableSessionInformationStore.Any(x => x.User.Name == name))
                     if(controllDataBase.CheckingUser(name))
                     {
                         controllDataBase.SetUserStatus(name, "Banned");
@@ -392,6 +405,52 @@ namespace Server
                     {
                         controllDataBase.SetUserStatus(name, "Normal");
                         var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' был разбанен.");
+                        await SendUdpAllUsers(mess);
+                    }
+                    else
+                        await SendUdp(address, "Данного пользователя нет в системе.");
+                }
+                else
+                    await SendUdp(address, "Неверная команда");
+            });
+        }
+
+        private void MuteUser(string message, IPAddress address)
+        {
+            Task.Run(async () =>
+            {
+                string[] commandParameters = message.Split(' ');
+                var name = commandParameters[1];
+
+                if (commandParameters.Length == 2)
+                {
+                    if (controllDataBase.CheckingUser(name))
+                    {
+                        controllDataBase.SetUserStatus(name, "Muted");
+                        var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' был лишен языка.");
+                        await SendUdpAllUsers(mess);
+                    }
+                    else
+                        await SendUdp(address, "Данного пользователя нет в системе.");
+                }
+                else
+                    await SendUdp(address, "Неверная команда");
+            });
+        }
+
+        private void UnmuteUser(string message, IPAddress address)
+        {
+            Task.Run(async () =>
+            {
+                string[] commandParameters = message.Split(' ');
+                var name = commandParameters[1];
+
+                if (commandParameters.Length == 2)
+                {
+                    if (controllDataBase.CheckingUser(name))
+                    {
+                        controllDataBase.SetUserStatus(name, "Normal");
+                        var mess = Encoding.UTF8.GetBytes($"Пользователь '{name}' снова отрастил язык.");
                         await SendUdpAllUsers(mess);
                     }
                     else
