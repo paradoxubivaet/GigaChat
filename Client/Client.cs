@@ -70,6 +70,8 @@ namespace Client
                             messagesStorage.RemoveAt(i);
                         }
                     }
+
+                    Thread.Sleep(1);
                 }
             });
         }
@@ -77,6 +79,7 @@ namespace Client
         // Этот метод должен выполняться асинхронно
         public void SendUdpMessage(byte[] data)
         {
+            // Server address and udp port 
             IPEndPoint endpoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 8000);
             udpClient.Send(data, data.Length, endpoint);
         }
@@ -93,6 +96,8 @@ namespace Client
                     {
                         messagesObservable.Add(Encoding.UTF8.GetString(data));
                     }
+
+                    Thread.Sleep(1);
                 }
             });
         }

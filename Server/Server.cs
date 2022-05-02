@@ -31,7 +31,7 @@ namespace Server
         private ObservableCollection<SessionInformation> observableSessionInformationStore = new ObservableCollection<SessionInformation>();
         
         // commands list
-        private List<string> commandList = new List<string> { "login", "/register", "/kick", "/ban", "/mute", 
+        private List<string> commandList = new List<string> { "/login", "/register", "/kick", "/ban", "/mute", 
                                                               "/unmute", "/unban", "/givenickname" };
 
         // services
@@ -84,7 +84,6 @@ namespace Server
 
         // Этот метод должен выполняться до момента, пока не будет исполнен StopListen().
         // Метод должен выполняться асинхронно
-
         public void StartServer()
         {
             tcpListener.Start();
@@ -135,7 +134,6 @@ namespace Server
                     var udpReceiveResult = await udpClient.ReceiveAsync();
                     byte[] data = udpReceiveResult.Buffer;
 
-                    //var checkAuthorize = CheckUserAuthorization(udpReceiveResult);
                     var ip = ((IPEndPoint)(udpReceiveResult.RemoteEndPoint)).Address;
 
                     if (observableSessionInformationStore.Any(x => x.Address.ToString() == ip.ToString()))
@@ -165,6 +163,7 @@ namespace Server
                                             DisplayMessageFromSessionInformation_CollectionChanged;
                         sessionInformation.Address = ip;
                         sessionInformation.Status = "Nonauthorize";
+                        sessionInformation.UdpPort = udpReceiveResult.RemoteEndPoint.Port;
                         observableSessionInformationStore.Add(sessionInformation);
                         sessionInformation.MessageStorage.Add(data);
 
@@ -174,7 +173,6 @@ namespace Server
 
                         await SendUdp(ip, answer);
                     }
-
                     Thread.Sleep(1);
                 }
             });
@@ -521,8 +519,12 @@ namespace Server
             {
                 byte[] data = Encoding.UTF8.GetBytes(message);
 
-                udpClient.Connect("127.0.0.1", 7000);
-                udpClient.Send(data, data.Length);
+                // I have to change this method. We need to get the udp port of the sender
+                var port = observableSessionInformationStore.First(x => x.Address.ToString() == address.ToString()).UdpPort;
+                var endPoint = new IPEndPoint(address, port);
+                //udpClient.Connect("127.0.0.1", 7000);
+                //udpClient.Connect(address, 7000);
+                udpClient.Send(data, data.Length, endPoint);
             });
         }
 
@@ -531,7 +533,5 @@ namespace Server
             listeningFlag = false;
             tcpListener.Stop();
         }
-        
-        // Чтобы знать, от кого пришло сообщение по udp, нужно при получении клиента тут же заносить его в базу и присваивать ему ID 
     }
 }

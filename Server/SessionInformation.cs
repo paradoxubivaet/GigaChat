@@ -16,7 +16,8 @@ namespace Server
 
         // Autorized/Nonauthorized 
         public string Status { get; set; }
-        public UdpClient UdpClient { get; set; }
+        public int UdpPort { get; set; }
+       // public UdpClient UdpClient { get; set; }
         public IPAddress Address { get; set; }
         public TcpClient TcpClient { get; set; } 
         public NetworkStream NetworkStream { get; set; }
