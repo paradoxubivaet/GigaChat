@@ -195,8 +195,10 @@ namespace Server
                     Console.WriteLine(mess);
                 }
                 else
-                    Console.WriteLine(s);
-
+                {
+                    var mess = $"{DateTime.Now.ToShortTimeString()} | {ip.ToString()} | {s}";
+                    Console.WriteLine(mess);
+                }
                 await DetermineMessageTypeObservableAsync(bytes, ip);
             }
         }
